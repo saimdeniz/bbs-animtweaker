@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "bbs_animtweaker_addon",
+  "version": "${version}",
+  "name": "BBS AT",
+  "description": "Adds an Anim Tweaker tab directly inside the BBS FS Model Editor to inject and remove Molang queries.",
+  "authors": ["mehsaden"],
+  "icon": "assets/bbs_animtweaker_addon/icon.png",
+  "license": "MIT",
+  "environment": "*",
+  "entrypoints": {
+    "bbs-addon": [
+      "com.example.bbsanimtweaker.BBSAnimTweakerAddon"
+    ],
+    "client": [
+      "com.example.bbsanimtweaker.client.BBSAnimTweakerClientInit"
+    ]
+  },
+  "mixins": [
+    "bbs_animtweaker_addon.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.14",
+    "minecraft": "~1.20.1",
+    "bbs": "*"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "required": true,
+  "package": "com.example.bbsanimtweaker.client.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "mixins": [],
+  "client": [
+    "MixinUIModelForm",
+    "MixinUIForm"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

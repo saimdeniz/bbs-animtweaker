@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "id": "bbs_animtweaker_addon",
+  "version": "${version}",
+  "name": "BBS AnimTweaker Addon",
+  "description": "Adds a Dashboard Panel to inject queries and rename animations in .bbs.json files",
+  "authors": ["you"],
+  "icon": "assets/bbs_animtweaker_addon/icon.png",
+  "license": "MIT",
+  "environment": "*",
+  "entrypoints": {
+    "bbs-addon": [
+      "com.example.bbsanimtweaker.BBSAnimTweakerAddon"
+    ],
+    "bbs-addon-client": [
+      "com.example.bbsanimtweaker.client.BBSAnimTweakerClientAddon"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.14",
+    "minecraft": "~1.20.1",
+    "bbs": "*",
+    "aaa_particles": "*"
+  }
+}
