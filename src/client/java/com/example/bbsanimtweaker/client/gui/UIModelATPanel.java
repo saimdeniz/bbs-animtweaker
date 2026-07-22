@@ -22,8 +22,10 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * AnimTweaker panel embedded directly inside the BBS FS Model Editor (UIModelForm).
@@ -403,10 +405,53 @@ public class UIModelATPanel extends UIFormPanel<ModelForm>
         String modelId = this.form.model.get();
         if (modelId == null || modelId.isEmpty()) return null;
 
+        // 1. model.bbs.json
         Link bbsLink = Link.assets("models/" + modelId + "/model.bbs.json");
         File bbsFile = BBSMod.getProvider().getFile(bbsLink);
         if (bbsFile != null && bbsFile.exists()) return bbsFile;
 
+        // 2. {modelId}.bbs.json (e.g. hugeplayer.bbs.json, nvl1.bbs.json)
+        Link modelIdBbsLink = Link.assets("models/" + modelId + "/" + modelId + ".bbs.json");
+        File modelIdBbsFile = BBSMod.getProvider().getFile(modelIdBbsLink);
+        if (modelIdBbsFile != null && modelIdBbsFile.exists()) return modelIdBbsFile;
+
+        // 3. model.json
+        Link jsonLink = Link.assets("models/" + modelId + "/model.json");
+        File jsonFile = BBSMod.getProvider().getFile(jsonLink);
+        if (jsonFile != null && jsonFile.exists()) return jsonFile;
+
+        // 4. {modelId}.json
+        Link modelIdJsonLink = Link.assets("models/" + modelId + "/" + modelId + ".json");
+        File modelIdJsonFile = BBSMod.getProvider().getFile(modelIdJsonLink);
+        if (modelIdJsonFile != null && modelIdJsonFile.exists()) return modelIdJsonFile;
+
+        // 5. model.geo.json
+        Link geoLink = Link.assets("models/" + modelId + "/model.geo.json");
+        File geoFile = BBSMod.getProvider().getFile(geoLink);
+        if (geoFile != null && geoFile.exists()) return geoFile;
+
+        // 6. {modelId}.geo.json
+        Link modelIdGeoLink = Link.assets("models/" + modelId + "/" + modelId + ".geo.json");
+        File modelIdGeoFile = BBSMod.getProvider().getFile(modelIdGeoLink);
+        if (modelIdGeoFile != null && modelIdGeoFile.exists()) return modelIdGeoFile;
+
+        // 7. Search folder for any .json or .bbs.json file
+        Link modelFolderLink = Link.assets("models/" + modelId);
+        File modelFolder = BBSMod.getProvider().getFile(modelFolderLink);
+        if (modelFolder != null && modelFolder.isDirectory())
+        {
+            File[] jsonFiles = modelFolder.listFiles((dir, name) -> name.endsWith(".json") && !name.endsWith(".animation.json"));
+            if (jsonFiles != null && jsonFiles.length > 0)
+            {
+                for (File f : jsonFiles)
+                {
+                    if (f.getName().endsWith(".bbs.json")) return f;
+                }
+                return jsonFiles[0];
+            }
+        }
+
+        // 8. Search animations folder
         Link animFolderLink = Link.assets("models/" + modelId + "/animations");
         File animFolder = BBSMod.getProvider().getFile(animFolderLink);
         if (animFolder != null && animFolder.isDirectory())
@@ -421,16 +466,33 @@ public class UIModelATPanel extends UIFormPanel<ModelForm>
     private void updateAnimationsList(String filter)
     {
         this.animationsList.clear();
+        Set<String> animSet = new LinkedHashSet<>();
+
         File modelFile = this.getModelFile();
         if (modelFile != null && modelFile.exists())
         {
             List<String> animNames = AnimTweakerEngine.getAnimationNames(modelFile);
-            for (String anim : animNames)
+            animSet.addAll(animNames);
+        }
+
+        try
+        {
+            ModelInstance model = ModelFormRenderer.getModel(this.form);
+            if (model != null && model.animations != null && model.animations.animations != null)
             {
-                if (filter.isEmpty() || anim.toLowerCase().contains(filter.toLowerCase()))
-                {
-                    this.animationsList.add(anim);
-                }
+                animSet.addAll(model.animations.animations.keySet());
+            }
+        }
+        catch (Exception ignored) {}
+
+        List<String> sorted = new ArrayList<>(animSet);
+        java.util.Collections.sort(sorted);
+
+        for (String anim : sorted)
+        {
+            if (filter.isEmpty() || anim.toLowerCase().contains(filter.toLowerCase()))
+            {
+                this.animationsList.add(anim);
             }
         }
     }
