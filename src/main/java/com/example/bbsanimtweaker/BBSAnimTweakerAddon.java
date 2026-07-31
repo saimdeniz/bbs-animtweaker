@@ -1,7 +1,7 @@
 package com.example.bbsanimtweaker;
 
-import mchorse.bbs_mod.events.BBSAddonMod;
+import mchorse.bbs_mod.addons.BBSAddon;
 
-public class BBSAnimTweakerAddon implements BBSAddonMod
+public class BBSAnimTweakerAddon extends BBSAddon
 {
 }

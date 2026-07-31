@@ -17,3 +17,9 @@ includeBuild('../bbs-fs-1.20.1') {
 	}
 }
 
+includeBuild('../BBS-ADDON-ENGINE-main') {
+	dependencySubstitution {
+		substitute module('ElGatoPro300:bbs-addon-engine:1.1.0') using project(':')
+	}
+}
+

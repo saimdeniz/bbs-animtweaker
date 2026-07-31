@@ -1,6 +1,7 @@
 package com.example.bbsanimtweaker.client.gui;
 
 import com.example.bbsanimtweaker.client.logic.AnimTweakerEngine;
+import com.example.bbsanimtweaker.client.logic.UndoManager;
 import mchorse.bbs_mod.BBSModClient;
 import mchorse.bbs_mod.ui.dashboard.UIDashboard;
 import mchorse.bbs_mod.ui.dashboard.panels.UIDashboardPanel;
@@ -32,7 +33,10 @@ public class UIAnimTweakerPanel extends UIDashboardPanel
     public UITextbox searchModelsInput;
     public UIStringList modelsList;
 
-    public UIButton restoreBackupButton;
+    public UIButton undoButton;
+    public UIButton redoButton;
+    public UIButton resetOriginalButton;
+    public UIButton acceptOriginalButton;
     public UITextbox searchAnimationsInput;
     public UIStringList animationsList;
     public UITextbox targetBoneInput;
@@ -414,18 +418,54 @@ public class UIAnimTweakerPanel extends UIDashboardPanel
         };
         this.modelsList.background().h(120);
 
-        // Backup
-        this.restoreBackupButton = new UIButton(IKey.raw("Restore Backup"), (b) -> {
+        // Undo
+        this.undoButton = new UIButton(IKey.raw("Undo"), (b) -> {
             File targetFile = this.getModelFile();
             if (targetFile != null) {
-                if (AnimTweakerEngine.restoreBackup(targetFile)) {
+                if (UndoManager.undo(targetFile)) {
                     this.triggerReload();
                 } else {
-                    this.getContext().notifyError(IKey.raw("No Backup Found!"));
+                    this.getContext().notifyError(IKey.raw("Nothing to Undo!"));
                 }
             }
         });
-        this.restoreBackupButton.color(0xff4444);
+
+        // Redo
+        this.redoButton = new UIButton(IKey.raw("Redo"), (b) -> {
+            File targetFile = this.getModelFile();
+            if (targetFile != null) {
+                if (UndoManager.redo(targetFile)) {
+                    this.triggerReload();
+                } else {
+                    this.getContext().notifyError(IKey.raw("Nothing to Redo!"));
+                }
+            }
+        });
+
+        // Reset to Original
+        this.resetOriginalButton = new UIButton(IKey.raw("Reset to Original"), (b) -> {
+            File targetFile = this.getModelFile();
+            if (targetFile != null) {
+                if (UndoManager.resetToOriginal(targetFile)) {
+                    this.triggerReload();
+                } else {
+                    this.getContext().notifyError(IKey.raw("No Original Snapshot Found!"));
+                }
+            }
+        });
+        this.resetOriginalButton.color(0xff4444);
+
+        // Accept as New Original
+        this.acceptOriginalButton = new UIButton(IKey.raw("Accept as New Original"), (b) -> {
+            File targetFile = this.getModelFile();
+            if (targetFile != null) {
+                if (UndoManager.acceptAsNewOriginal(targetFile)) {
+                    this.getContext().notifySuccess(IKey.raw("Current state saved as new original!"));
+                } else {
+                    this.getContext().notifyError(IKey.raw("Failed to save new original!"));
+                }
+            }
+        });
 
         // Animations Search & List
         this.searchAnimationsInput = new UITextbox(1000, (str) -> {
@@ -478,7 +518,7 @@ public class UIAnimTweakerPanel extends UIDashboardPanel
 
             File f = this.getModelFile();
             if (f != null && f.exists()) {
-                AnimTweakerEngine.createBackup(f);
+                UndoManager.pushState(f);
                 boolean success = false;
                 String modifier = this.mathModifierInput.getText();
 
@@ -508,7 +548,7 @@ public class UIAnimTweakerPanel extends UIDashboardPanel
 
             File f = this.getModelFile();
             if (f != null && f.exists()) {
-                AnimTweakerEngine.createBackup(f);
+                UndoManager.pushState(f);
                 if (AnimTweakerEngine.removeQueries(f, bone, targetAnims)) {
                     this.triggerReload();
                 }
@@ -531,7 +571,9 @@ public class UIAnimTweakerPanel extends UIDashboardPanel
             this.mathModifierInput,
             this.injectQueryButton,
             this.removeQueriesButton,
-            this.restoreBackupButton
+            UI.row(this.undoButton, this.redoButton),
+            this.resetOriginalButton,
+            this.acceptOriginalButton
         );
 
         this.leftContent.relative(this.leftPanel).x(10).y(10).w(1F, -20).h(0);

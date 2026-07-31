@@ -14,77 +14,40 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 public class AnimTweakerEngine
 {
+    private static final Logger LOGGER = LoggerFactory.getLogger("BBS-AT");
     private static final Gson GSON = new GsonBuilder().serializeNulls().setPrettyPrinting().create();
 
-    private static final int MAX_BACKUPS = 5;
 
-    public static boolean createBackup(File targetFile)
+    /**
+     * Holds the result of extracting the animations block from a JSON string.
+     * Contains the substring, its start index, and its end index (exclusive).
+     */
+    private static class AnimationsBlockResult
     {
-        if (targetFile == null || !targetFile.exists()) return false;
+        final String block;
+        final int matcherStart; // start of the "animations": key
+        final int blockStart;   // start of the '{' character
+        final int blockEnd;     // end of the '}' character (exclusive, i.e. endIdx + 1)
 
-        try
+        AnimationsBlockResult(String block, int matcherStart, int blockStart, int blockEnd)
         {
-            // Shift existing backups: .backup.4 -> .backup.5, etc.
-            for (int i = MAX_BACKUPS - 1; i >= 1; i--)
-            {
-                File src = new File(targetFile.getAbsolutePath() + ".backup." + i);
-                File dest = new File(targetFile.getAbsolutePath() + ".backup." + (i + 1));
-                if (src.exists())
-                {
-                    Files.move(src.toPath(), dest.toPath(), StandardCopyOption.REPLACE_EXISTING);
-                }
-            }
-
-            // Current target -> .backup.1
-            File dest1 = new File(targetFile.getAbsolutePath() + ".backup.1");
-            Files.copy(targetFile.toPath(), dest1.toPath(), StandardCopyOption.REPLACE_EXISTING);
-            return true;
-        }
-        catch (IOException e)
-        {
-            e.printStackTrace();
-            return false;
-        }
-    }
-
-    public static boolean restoreBackup(File targetFile)
-    {
-        if (targetFile == null) return false;
-
-        File backup1 = new File(targetFile.getAbsolutePath() + ".backup.1");
-        if (!backup1.exists()) return false;
-
-        try
-        {
-            // Restore .backup.1 atomically to targetFile
-            File tempFile = new File(targetFile.getParentFile(), targetFile.getName() + ".tmp");
-            Files.copy(backup1.toPath(), tempFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
-            Files.move(tempFile.toPath(), targetFile.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-
-            // Shift backups back: .backup.2 -> .backup.1, .backup.3 -> .backup.2, etc.
-            Files.delete(backup1.toPath());
-            for (int i = 2; i <= MAX_BACKUPS; i++)
-            {
-                File src = new File(targetFile.getAbsolutePath() + ".backup." + i);
-                File dest = new File(targetFile.getAbsolutePath() + ".backup." + (i - 1));
-                if (src.exists())
-                {
-                    Files.move(src.toPath(), dest.toPath(), StandardCopyOption.REPLACE_EXISTING);
-                }
-            }
-            return true;
-        }
-        catch (IOException e)
-        {
-            e.printStackTrace();
-            return false;
+            this.block = block;
+            this.matcherStart = matcherStart;
+            this.blockStart = blockStart;
+            this.blockEnd = blockEnd;
         }
     }
 
@@ -97,11 +60,11 @@ public class AnimTweakerEngine
             String content = new String(Files.readAllBytes(targetFile.toPath()), StandardCharsets.UTF_8);
             
             // Extract animations block
-            String animationsBlock = extractAnimationsBlock(content);
-            if (animationsBlock == null) return false;
+            AnimationsBlockResult result = extractAnimationsBlock(content);
+            if (result == null) return false;
 
             // Parse animations into JsonObject to preserve number formats
-            JsonObject animations = JsonParser.parseString(animationsBlock).getAsJsonObject();
+            JsonObject animations = JsonParser.parseString(result.block).getAsJsonObject();
             
             if (!animations.has(oldName)) return false;
 
@@ -110,12 +73,12 @@ public class AnimTweakerEngine
             animations.add(newName, animData);
 
             // Splice back
-            spliceAndSave(targetFile, content, animations);
+            spliceAndSave(targetFile, content, animations, result);
             return true;
         }
         catch (Exception e)
         {
-            e.printStackTrace();
+            LOGGER.error("Failed to rename animation '{}' to '{}' in {}", oldName, newName, targetFile.getName(), e);
             return false;
         }
     }
@@ -129,10 +92,10 @@ public class AnimTweakerEngine
         {
             String content = new String(Files.readAllBytes(targetFile.toPath()), StandardCharsets.UTF_8);
             
-            String animationsBlock = extractAnimationsBlock(content);
-            if (animationsBlock == null) return false;
+            AnimationsBlockResult result = extractAnimationsBlock(content);
+            if (result == null) return false;
 
-            JsonObject animations = JsonParser.parseString(animationsBlock).getAsJsonObject();
+            JsonObject animations = JsonParser.parseString(result.block).getAsJsonObject();
             
             for (Map.Entry<String, JsonElement> animEntry : animations.entrySet())
             {
@@ -277,12 +240,12 @@ public class AnimTweakerEngine
                 }
             }
 
-            spliceAndSave(targetFile, content, animations);
+            spliceAndSave(targetFile, content, animations, result);
             return true;
         }
         catch (Exception e)
         {
-            e.printStackTrace();
+            LOGGER.error("Failed to inject queries into {}", targetFile.getName(), e);
             return false;
         }
     }
@@ -290,8 +253,18 @@ public class AnimTweakerEngine
     private static JsonElement processJsonRotationValue(JsonElement val, String queryName, String modifierStr)
     {
         if (queryName == null) return val;
+        if (val == null || val.isJsonNull()) return new JsonPrimitive("0" + queryName + modifierStr);
 
-        String valStr = val.getAsString();
+        String valStr;
+        try
+        {
+            valStr = val.getAsString();
+        }
+        catch (Exception e)
+        {
+            return val;
+        }
+
         String cleanVal = valStr;
 
         // Safely remove only the target query and its modifier without wiping out trailing math expressions
@@ -310,30 +283,12 @@ public class AnimTweakerEngine
         try
         {
             String content = new String(Files.readAllBytes(targetFile.toPath()), StandardCharsets.UTF_8);
-            String animationsBlock = extractAnimationsBlock(content);
-            if (animationsBlock == null) return false;
+            AnimationsBlockResult result = extractAnimationsBlock(content);
+            if (result == null) return false;
 
-            String newAnimationsBlock = removeQueriesFromAnimations(animationsBlock, boneName, targetAnimations);
-            if (animationsBlock.equals(newAnimationsBlock)) return true; // nothing changed
+            JsonObject animations = JsonParser.parseString(result.block).getAsJsonObject();
+            boolean changed = false;
 
-            String newContent = content.replace(animationsBlock, newAnimationsBlock);
-            File tempFile = new File(targetFile.getParentFile(), targetFile.getName() + ".tmp");
-            Files.write(tempFile.toPath(), newContent.getBytes(StandardCharsets.UTF_8));
-            Files.move(tempFile.toPath(), targetFile.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-            return true;
-        }
-        catch (Exception e)
-        {
-            e.printStackTrace();
-            return false;
-        }
-    }
-
-    private static String removeQueriesFromAnimations(String animationsJson, String boneName, List<String> targetAnimations)
-    {
-        try
-        {
-            JsonObject animations = JsonParser.parseString(animationsJson).getAsJsonObject();
             for (Map.Entry<String, JsonElement> animEntry : animations.entrySet())
             {
                 String animName = animEntry.getKey();
@@ -374,12 +329,14 @@ public class AnimTweakerEngine
                                             kfData.set(2, cleanJsonRotationValue(kfData.get(2)));
                                             kfData.set(3, cleanJsonRotationValue(kfData.get(3)));
                                             kfData.set(4, cleanJsonRotationValue(kfData.get(4)));
+                                            changed = true;
                                         }
                                         else if (kfData.size() == 3)
                                         {
                                             kfData.set(0, cleanJsonRotationValue(kfData.get(0)));
                                             kfData.set(1, cleanJsonRotationValue(kfData.get(1)));
                                             kfData.set(2, cleanJsonRotationValue(kfData.get(2)));
+                                            changed = true;
                                         }
                                     }
                                 }
@@ -396,10 +353,12 @@ public class AnimTweakerEngine
                                             kfData.set(2, cleanJsonRotationValue(kfData.get(2)));
                                             kfData.set(3, cleanJsonRotationValue(kfData.get(3)));
                                             kfData.set(4, cleanJsonRotationValue(kfData.get(4)));
+                                            changed = true;
                                         } else if (kfData.size() == 3) {
                                             kfData.set(0, cleanJsonRotationValue(kfData.get(0)));
                                             kfData.set(1, cleanJsonRotationValue(kfData.get(1)));
                                             kfData.set(2, cleanJsonRotationValue(kfData.get(2)));
+                                            changed = true;
                                         }
                                     }
                                     else if (kfEntry.getValue().isJsonObject())
@@ -412,10 +371,12 @@ public class AnimTweakerEngine
                                                 postList.set(2, cleanJsonRotationValue(postList.get(2)));
                                                 postList.set(3, cleanJsonRotationValue(postList.get(3)));
                                                 postList.set(4, cleanJsonRotationValue(postList.get(4)));
+                                                changed = true;
                                             } else if (postList.size() >= 3) {
                                                 postList.set(0, cleanJsonRotationValue(postList.get(0)));
                                                 postList.set(1, cleanJsonRotationValue(postList.get(1)));
                                                 postList.set(2, cleanJsonRotationValue(postList.get(2)));
+                                                changed = true;
                                             }
                                         }
                                         if (kfMap.has("pre") && kfMap.get("pre").isJsonArray())
@@ -425,10 +386,12 @@ public class AnimTweakerEngine
                                                 preList.set(2, cleanJsonRotationValue(preList.get(2)));
                                                 preList.set(3, cleanJsonRotationValue(preList.get(3)));
                                                 preList.set(4, cleanJsonRotationValue(preList.get(4)));
+                                                changed = true;
                                             } else if (preList.size() >= 3) {
                                                 preList.set(0, cleanJsonRotationValue(preList.get(0)));
                                                 preList.set(1, cleanJsonRotationValue(preList.get(1)));
                                                 preList.set(2, cleanJsonRotationValue(preList.get(2)));
+                                                changed = true;
                                             }
                                         }
                                     }
@@ -438,21 +401,35 @@ public class AnimTweakerEngine
                     }
                 }
             }
-            return GSON.toJson(animations);
+
+            if (!changed) return true; // nothing changed
+
+            // Use spliceAndSave for consistent formatting (same as injectQueries)
+            spliceAndSave(targetFile, content, animations, result);
+            return true;
         }
         catch (Exception e)
         {
-            e.printStackTrace();
-            return animationsJson;
+            LOGGER.error("Failed to remove queries from {}", targetFile.getName(), e);
+            return false;
         }
     }
 
     private static JsonElement cleanJsonRotationValue(JsonElement val)
     {
-        if (val == null) return null;
+        if (val == null || val.isJsonNull()) return val;
         if (val.isJsonPrimitive() && val.getAsJsonPrimitive().isNumber()) return val;
         
-        String s = val.getAsString();
+        String s;
+        try
+        {
+            s = val.getAsString();
+        }
+        catch (Exception e)
+        {
+            return val;
+        }
+
         s = s.replaceAll("(?i)[\\+\\-]?query\\.head_pitch(\\s*[*+\\-/]\\s*\\d*\\.?\\d*)?", "");
         s = s.replaceAll("(?i)[\\+\\-]?query\\.head_yaw(\\s*[*+\\-/]\\s*\\d*\\.?\\d*)?", "");
         
@@ -471,25 +448,97 @@ public class AnimTweakerEngine
         try
         {
             String content = new String(Files.readAllBytes(targetFile.toPath()), StandardCharsets.UTF_8);
-            String animationsBlock = extractAnimationsBlock(content);
-            if (animationsBlock != null)
+            AnimationsBlockResult result = extractAnimationsBlock(content);
+            if (result != null)
             {
-                JsonObject animations = JsonParser.parseString(animationsBlock).getAsJsonObject();
+                JsonObject animations = JsonParser.parseString(result.block).getAsJsonObject();
                 names.addAll(animations.keySet());
             }
         }
         catch (Exception e)
         {
-            e.printStackTrace();
+            LOGGER.error("Failed to get animation names from {}", targetFile.getName(), e);
         }
         return names;
     }
 
-    private static String extractAnimationsBlock(String content)
+    /**
+     * Returns both animation names and tweaked status in a single file read + parse.
+     * Key = animation name, Value = true if tweaked (contains query.head_pitch or query.head_yaw).
+     */
+    public static Map<String, Boolean> getAnimationsWithStatus(File targetFile)
+    {
+        Map<String, Boolean> result = new HashMap<>();
+        if (targetFile == null || !targetFile.exists()) return result;
+
+        try
+        {
+            String content = new String(Files.readAllBytes(targetFile.toPath()), StandardCharsets.UTF_8);
+            AnimationsBlockResult blockResult = extractAnimationsBlock(content);
+            if (blockResult != null)
+            {
+                JsonObject animations = JsonParser.parseString(blockResult.block).getAsJsonObject();
+                for (Map.Entry<String, JsonElement> animEntry : animations.entrySet())
+                {
+                    boolean isTweaked = false;
+                    if (animEntry.getValue().isJsonObject())
+                    {
+                        String animStr = animEntry.getValue().toString();
+                        isTweaked = animStr.contains("query.head_pitch") || animStr.contains("query.head_yaw");
+                    }
+                    result.put(animEntry.getKey(), isTweaked);
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            LOGGER.error("Failed to get animations with status from {}", targetFile.getName(), e);
+        }
+        return result;
+    }
+
+    public static Set<String> getTweakedAnimations(File targetFile)
+    {
+        Set<String> tweaked = new HashSet<>();
+        if (targetFile == null || !targetFile.exists()) return tweaked;
+
+        try
+        {
+            String content = new String(Files.readAllBytes(targetFile.toPath()), StandardCharsets.UTF_8);
+            AnimationsBlockResult blockResult = extractAnimationsBlock(content);
+            if (blockResult != null)
+            {
+                JsonObject animations = JsonParser.parseString(blockResult.block).getAsJsonObject();
+                for (Map.Entry<String, JsonElement> animEntry : animations.entrySet())
+                {
+                    if (animEntry.getValue().isJsonObject())
+                    {
+                        String animStr = animEntry.getValue().toString();
+                        if (animStr.contains("query.head_pitch") || animStr.contains("query.head_yaw"))
+                        {
+                            tweaked.add(animEntry.getKey());
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            LOGGER.error("Failed to get tweaked animations from {}", targetFile.getName(), e);
+        }
+        return tweaked;
+    }
+
+    /**
+     * Extracts the animations JSON block from the file content.
+     * Returns both the block string and its positional indices to avoid redundant scanning in spliceAndSave.
+     */
+    private static AnimationsBlockResult extractAnimationsBlock(String content)
     {
         Matcher matcher = Pattern.compile("\"animations\"\\s*:\\s*\\{").matcher(content);
         if (!matcher.find()) return null;
 
+        int matcherStart = matcher.start();
         int startIdx = matcher.end() - 1;
         int braceCount = 0;
         int endIdx = -1;
@@ -520,88 +569,81 @@ public class AnimTweakerEngine
 
         if (endIdx != -1)
         {
-            return content.substring(startIdx, endIdx + 1);
+            return new AnimationsBlockResult(
+                content.substring(startIdx, endIdx + 1),
+                matcherStart,
+                startIdx,
+                endIdx + 1
+            );
         }
         return null;
     }
 
-    private static void spliceAndSave(File targetFile, String originalContent, JsonObject newAnimations) throws IOException
+    /**
+     * Splices the new animations JSON object back into the original file content,
+     * preserving the original file's formatting and indentation.
+     * Reuses the positional indices from AnimationsBlockResult to avoid redundant brace-counting.
+     */
+    private static void spliceAndSave(File targetFile, String originalContent, JsonObject newAnimations, AnimationsBlockResult blockResult) throws IOException
     {
-        Matcher matcher = Pattern.compile("\"animations\"\\s*:\\s*\\{").matcher(originalContent);
-        if (!matcher.find()) return;
+        String animDump = GSON.toJson(newAnimations);
+        
+        // Format array values into single lines just like original model formats
+        Matcher arrMatcher = Pattern.compile("\\[\\s*([^\\[\\]\\{\\}]+?)\\s*\\]").matcher(animDump);
+        StringBuffer sb = new StringBuffer();
+        while (arrMatcher.find()) {
+            String inner = arrMatcher.group(1).replaceAll("\\s*\\n\\s*", " ").trim();
+            arrMatcher.appendReplacement(sb, Matcher.quoteReplacement("[" + inner + "]"));
+        }
+        arrMatcher.appendTail(sb);
+        String formattedAnim = sb.toString();
 
-        int startIdx = matcher.end() - 1;
-        int braceCount = 0;
-        int endIdx = -1;
-        boolean inStr = false;
-        boolean escape = false;
-
-        for (int i = startIdx; i < originalContent.length(); i++)
-        {
-            char c = originalContent.charAt(i);
-            if (escape) { escape = false; continue; }
-            if (c == '\\') { escape = true; continue; }
-            if (c == '"') { inStr = !inStr; continue; }
-
-            if (!inStr)
-            {
-                if (c == '{') braceCount++;
-                else if (c == '}')
-                {
-                    braceCount--;
-                    if (braceCount == 0)
-                    {
-                        endIdx = i;
-                        break;
-                    }
+        // Detect indentation pattern of the file
+        String fileIndent = "\t";
+        for (String line : originalContent.split("\n")) {
+            if (line.startsWith(" ")) {
+                int spaces = line.length() - line.replaceAll("^\\s+", "").length();
+                if (spaces > 0) {
+                    fileIndent = " ".repeat(spaces);
+                    break;
                 }
+            } else if (line.startsWith("\t")) {
+                fileIndent = "\t";
+                break;
             }
         }
 
-        if (endIdx != -1)
+        // Indent formatting
+        String[] lines = formattedAnim.split("\n");
+        StringBuilder indentedAnim = new StringBuilder(lines[0]);
+        for (int i = 1; i < lines.length; i++) {
+            indentedAnim.append("\n").append(fileIndent).append(fileIndent).append(lines[i]);
+        }
+
+        String finalContent = originalContent.substring(0, blockResult.matcherStart) 
+            + "\"animations\": " 
+            + indentedAnim.toString() 
+            + originalContent.substring(blockResult.blockEnd);
+
+        File tempFile = new File(targetFile.getParentFile(), targetFile.getName() + ".tmp");
+        Files.write(tempFile.toPath(), finalContent.getBytes(StandardCharsets.UTF_8));
+        atomicMoveWithFallback(tempFile, targetFile);
+    }
+
+    /**
+     * Attempts an atomic move; falls back to a regular replace-move on Windows
+     * when ATOMIC_MOVE is not supported or the file is locked.
+     */
+    private static void atomicMoveWithFallback(File source, File target) throws IOException
+    {
+        try
         {
-            String animDump = GSON.toJson(newAnimations);
-            
-            // Format array values into single lines just like original model formats
-            Matcher arrMatcher = Pattern.compile("\\[\\s*([^\\[\\]\\{\\}]+?)\\s*\\]").matcher(animDump);
-            StringBuffer sb = new StringBuffer();
-            while (arrMatcher.find()) {
-                String inner = arrMatcher.group(1).replaceAll("\\s*\\n\\s*", " ").trim();
-                arrMatcher.appendReplacement(sb, "[" + inner + "]");
-            }
-            arrMatcher.appendTail(sb);
-            String formattedAnim = sb.toString();
-
-            // Detect indentation pattern of the file
-            String fileIndent = "\t";
-            for (String line : originalContent.split("\n")) {
-                if (line.startsWith(" ")) {
-                    int spaces = line.length() - line.replaceAll("^\\s+", "").length();
-                    if (spaces > 0) {
-                        fileIndent = " ".repeat(spaces);
-                        break;
-                    }
-                } else if (line.startsWith("\t")) {
-                    fileIndent = "\t";
-                    break;
-                }
-            }
-
-            // Indent formatting
-            String[] lines = formattedAnim.split("\n");
-            StringBuilder indentedAnim = new StringBuilder(lines[0]);
-            for (int i = 1; i < lines.length; i++) {
-                indentedAnim.append("\n").append(fileIndent).append(fileIndent).append(lines[i]);
-            }
-
-            String finalContent = originalContent.substring(0, matcher.start()) 
-                + "\"animations\": " 
-                + indentedAnim.toString() 
-                + originalContent.substring(endIdx + 1);
-
-            File tempFile = new File(targetFile.getParentFile(), targetFile.getName() + ".tmp");
-            Files.write(tempFile.toPath(), finalContent.getBytes(StandardCharsets.UTF_8));
-            Files.move(tempFile.toPath(), targetFile.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            Files.move(source.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        }
+        catch (java.nio.file.AtomicMoveNotSupportedException | java.nio.file.AccessDeniedException e)
+        {
+            LOGGER.warn("Atomic move not supported or access denied, falling back to regular move for {}", target.getName());
+            Files.move(source.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING);
         }
     }
 }

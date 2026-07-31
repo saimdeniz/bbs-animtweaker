@@ -31,6 +31,10 @@ dependencies {
 	modCompileOnly "mchorse:bbs:2.3.1-1.20.1"
 	modClientCompileOnly "mchorse:bbs:2.3.1-1.20.1"
 
+	// BBS Addon Engine Local Project Dependency
+	modCompileOnly "ElGatoPro300:bbs-addon-engine:1.1.0"
+	modClientCompileOnly "ElGatoPro300:bbs-addon-engine:1.1.0"
+
 	// AAA Particles (users must have this installed at runtime)
 	modCompileOnly "maven.modrinth:aaa-particles:${project.aaa_version}"
 	modClientCompileOnly "maven.modrinth:aaa-particles:${project.aaa_version}"

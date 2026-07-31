@@ -18,7 +18,7 @@ public class MixinUIModelForm
         UIModelForm self = (UIModelForm) (Object) this;
         self.registerPanel(
             new UIModelATPanel(self),
-            IKey.raw("Anim Tweaker"),
+            IKey.raw("BBS AT"),
             Icons.WRENCH
         );
     }
