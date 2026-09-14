@@ -8,17 +8,20 @@ import mchorse.bbs_mod.cubic.ModelInstance;
 import mchorse.bbs_mod.forms.forms.ModelForm;
 import mchorse.bbs_mod.forms.renderers.ModelFormRenderer;
 import mchorse.bbs_mod.l10n.keys.IKey;
+import mchorse.bbs_mod.resources.Link;
 import mchorse.bbs_mod.ui.forms.editors.forms.UIForm;
 import mchorse.bbs_mod.ui.forms.editors.forms.UIModelForm;
 import mchorse.bbs_mod.ui.forms.editors.panels.UIFormPanel;
 import mchorse.bbs_mod.ui.framework.elements.buttons.UIButton;
 import mchorse.bbs_mod.ui.framework.elements.buttons.UIToggle;
-import mchorse.bbs_mod.ui.framework.elements.input.UITrackpad;
+import mchorse.bbs_mod.ui.framework.elements.input.UISliderTrackpad;
 import mchorse.bbs_mod.ui.framework.elements.input.list.UIStringList;
 import mchorse.bbs_mod.ui.framework.elements.input.text.UITextbox;
+import mchorse.bbs_mod.ui.framework.elements.utils.UILabel;
 import mchorse.bbs_mod.ui.utils.UI;
 import mchorse.bbs_mod.ui.utils.UIConstants;
-import mchorse.bbs_mod.resources.Link;
+import mchorse.bbs_mod.ui.utils.icons.Icons;
+import mchorse.bbs_mod.utils.colors.Colors;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -31,6 +34,7 @@ import java.util.Set;
 
 /**
  * AnimTweaker panel embedded directly inside the BBS FS Model Editor (UIModelForm).
+ * Redesigned for BBS FS 2.6 with compact, icon-driven, slider-based UI.
  */
 public class UIModelATPanel extends UIFormPanel<ModelForm>
 {
@@ -44,43 +48,58 @@ public class UIModelATPanel extends UIFormPanel<ModelForm>
     public UIToggle onlyTweakedToggle;
     public UIToggle allAnimationsToggle;
 
-    public UITextbox targetBoneInput;
-
-    public UIButton presetHeadPosBtn;
-    public UIButton presetHeadNegBtn;
-    public UIButton presetBreathingBtn;
-    public UIButton presetClearBtn;
-
-    public UIToggle injectXPosToggle;
-    public UIToggle injectXNegToggle;
-    public UIToggle injectYPosToggle;
-    public UIToggle injectYNegToggle;
-    public UIToggle injectZPosToggle;
-    public UIToggle injectZNegToggle;
-
-    public UITextbox mathModifierInput;
-    public UITrackpad multiplierTrackpad;
-    public UIButton quickModHalfBtn;
-    public UIButton quickModInvBtn;
-    public UIButton quickModSinBtn;
-
-    public UIButton injectQueryButton;
-    public UIButton removeQueriesButton;
+    // History & Snapshot Buttons
     public UIButton undoButton;
     public UIButton redoButton;
     public UIButton resetOriginalButton;
     public UIButton acceptOriginalButton;
 
+    // Quick Presets
+    public UIButton presetHeadPosBtn;
+    public UIButton presetHeadNegBtn;
+    public UIButton presetBreathingBtn;
+    public UIButton presetClearBtn;
+
+    // Target Bone
+    public UITextbox targetBoneInput;
+
+    // Color-Coded Axis Toggles
+    public boolean isXPos = false;
+    public boolean isXNeg = false;
+    public boolean isYPos = false;
+    public boolean isYNeg = false;
+    public boolean isZPos = false;
+    public boolean isZNeg = false;
+
+    public UIButton btnXPos;
+    public UIButton btnXNeg;
+    public UIButton btnYPos;
+    public UIButton btnYNeg;
+    public UIButton btnZPos;
+    public UIButton btnZNeg;
+
+    // Multiplier Slider & Math Modifiers
+    public UISliderTrackpad multiplierSlider;
+    public UISliderTrackpad multiplierTrackpad; // Backward-compatibility alias
+    public UITextbox mathModifierInput;
+    public UIButton quickModHalfBtn;
+    public UIButton quickModInvBtn;
+    public UIButton quickModSinBtn;
+
+    // Main Actions
+    public UIButton injectQueryButton;
+    public UIButton removeQueriesButton;
+
     public UIModelATPanel(UIForm editor)
     {
         super(editor);
 
-        // Bones search & list
+        // 1. Bones search & list
         this.searchBonesInput = new UITextbox(1000, (str) ->
         {
             this.updateBonesList(str);
         });
-        this.searchBonesInput.placeholder(IKey.raw("Search..."));
+        this.searchBonesInput.placeholder(IKey.raw("Search bones..."));
         this.searchBonesInput.h(20);
 
         this.bonesList = new UIStringList((selected) ->
@@ -100,62 +119,94 @@ public class UIModelATPanel extends UIFormPanel<ModelForm>
             catch (Exception ignored) {}
         });
         this.bonesList.multi();
-        this.bonesList.background().h(130);
+        this.bonesList.background().h(120);
 
-        // Animations search & list
+        // 2. Animations search & list
         this.searchAnimationsInput = new UITextbox(1000, (str) ->
         {
             this.updateAnimationsList(str);
         });
-        this.searchAnimationsInput.placeholder(IKey.raw("Search..."));
+        this.searchAnimationsInput.placeholder(IKey.raw("Search animations..."));
         this.searchAnimationsInput.h(20);
 
         this.animationsList = new UIStringList((l) -> {});
         this.animationsList.multi();
-        this.animationsList.background().h(100);
+        this.animationsList.background().h(95);
 
-        this.onlyTweakedToggle = new UIToggle(IKey.raw("🛠 Only"), false, (b) ->
+        this.onlyTweakedToggle = new UIToggle(IKey.raw("Modded"), false, (b) ->
         {
             this.updateAnimationsList(this.searchAnimationsInput.getText());
         });
-        this.onlyTweakedToggle.tooltip(IKey.raw("Show only modified animations"));
+        this.onlyTweakedToggle.tooltip(IKey.raw("Show only modified animations (with \uD83D\uDEE0)"));
 
-        this.allAnimationsToggle = new UIToggle(IKey.raw(""), true, (b) -> {});
-        this.allAnimationsToggle.tooltip(IKey.raw("If enabled, applies to all animations."));
+        this.allAnimationsToggle = new UIToggle(IKey.raw("All"), true, (b) -> {});
+        this.allAnimationsToggle.tooltip(IKey.raw("If enabled, applies to all animations of this model; otherwise only selected."));
 
-        // Presets
-        this.presetHeadPosBtn = new UIButton(IKey.raw("Head Look (+)"), (b) -> {
-            this.injectXPosToggle.setValue(true);  this.injectXNegToggle.setValue(false);
-            this.injectYPosToggle.setValue(true);  this.injectYNegToggle.setValue(false);
-            this.injectZPosToggle.setValue(false); this.injectZNegToggle.setValue(false);
+        // 3. History toolbar buttons
+        this.undoButton = new UIButton(IKey.raw("Undo"), (b) -> this.undo());
+        this.undoButton.tooltip(IKey.raw("Undo last change"));
+        this.undoButton.color(0x282c35, 0x383e4a).textColor(Colors.WHITE, true);
+
+        this.redoButton = new UIButton(IKey.raw("Redo"), (b) -> this.redo());
+        this.redoButton.tooltip(IKey.raw("Redo last undone change"));
+        this.redoButton.color(0x282c35, 0x383e4a).textColor(Colors.WHITE, true);
+
+        this.resetOriginalButton = new UIButton(IKey.raw("Reset"), (b) -> this.resetOriginal());
+        this.resetOriginalButton.tooltip(IKey.raw("Reset model file to original snapshot"));
+        this.resetOriginalButton.color(0x382e28, 0x4d3e36).textColor(0xffc107, true);
+
+        this.acceptOriginalButton = new UIButton(IKey.raw("Save Orig"), (b) -> this.acceptOriginal());
+        this.acceptOriginalButton.tooltip(IKey.raw("Save current state as new original snapshot"));
+        this.acceptOriginalButton.color(0x283828, 0x364d36).textColor(0x81c784, true);
+
+        // 4. Quick Presets
+        this.presetHeadPosBtn = new UIButton(IKey.raw("Look (+)"), (b) -> {
+            this.isXPos = true;  this.isXNeg = false;
+            this.isYPos = true;  this.isYNeg = false;
+            this.isZPos = false; this.isZNeg = false;
             this.mathModifierInput.setText("");
+            this.multiplierSlider.setValue(1.0);
+            this.updateAxisStyles();
             if (this.targetBoneInput.getText().isEmpty()) this.setTargetBone("head");
         });
+        this.presetHeadPosBtn.tooltip(IKey.raw("Preset: Head Look (+) on X and Y axes"));
+        this.presetHeadPosBtn.color(0x282c35, 0x383e4a).textColor(Colors.WHITE, true);
 
-        this.presetHeadNegBtn = new UIButton(IKey.raw("Head Look (-)"), (b) -> {
-            this.injectXPosToggle.setValue(false); this.injectXNegToggle.setValue(true);
-            this.injectYPosToggle.setValue(false); this.injectYNegToggle.setValue(true);
-            this.injectZPosToggle.setValue(false); this.injectZNegToggle.setValue(false);
+        this.presetHeadNegBtn = new UIButton(IKey.raw("Look (-)"), (b) -> {
+            this.isXPos = false; this.isXNeg = true;
+            this.isYPos = false; this.isYNeg = true;
+            this.isZPos = false; this.isZNeg = false;
             this.mathModifierInput.setText("");
+            this.multiplierSlider.setValue(1.0);
+            this.updateAxisStyles();
             if (this.targetBoneInput.getText().isEmpty()) this.setTargetBone("head");
         });
+        this.presetHeadNegBtn.tooltip(IKey.raw("Preset: Head Look (-) on X and Y axes"));
+        this.presetHeadNegBtn.color(0x282c35, 0x383e4a).textColor(Colors.WHITE, true);
 
-        this.presetBreathingBtn = new UIButton(IKey.raw("Breathing"), (b) -> {
-            this.injectXPosToggle.setValue(true);  this.injectXNegToggle.setValue(false);
-            this.injectYPosToggle.setValue(false); this.injectYNegToggle.setValue(false);
-            this.injectZPosToggle.setValue(false); this.injectZNegToggle.setValue(false);
+        this.presetBreathingBtn = new UIButton(IKey.raw("Breath"), (b) -> {
+            this.isXPos = false; this.isXNeg = false;
+            this.isYPos = false; this.isYNeg = false;
+            this.isZPos = true;  this.isZNeg = false;
             this.mathModifierInput.setText("* math.sin(query.anim_time * 150) * 0.3");
+            this.updateAxisStyles();
             if (this.targetBoneInput.getText().isEmpty()) this.setTargetBone("body");
         });
+        this.presetBreathingBtn.tooltip(IKey.raw("Preset: Subtle breathing motion on Z axis"));
+        this.presetBreathingBtn.color(0x282c35, 0x383e4a).textColor(Colors.WHITE, true);
 
         this.presetClearBtn = new UIButton(IKey.raw("Clear"), (b) -> {
-            this.injectXPosToggle.setValue(false); this.injectXNegToggle.setValue(false);
-            this.injectYPosToggle.setValue(false); this.injectYNegToggle.setValue(false);
-            this.injectZPosToggle.setValue(false); this.injectZNegToggle.setValue(false);
+            this.isXPos = false; this.isXNeg = false;
+            this.isYPos = false; this.isYNeg = false;
+            this.isZPos = false; this.isZNeg = false;
             this.mathModifierInput.setText("");
+            this.multiplierSlider.setValue(1.0);
+            this.updateAxisStyles();
         });
+        this.presetClearBtn.tooltip(IKey.raw("Clear all active axes and math modifier"));
+        this.presetClearBtn.color(0x382626, 0x4d3232).textColor(0xff8888, true);
 
-        // Target Bone
+        // 5. Target Bone
         this.targetBoneInput = new UITextbox(1000, (str) -> {
             if (this.form != null)
             {
@@ -167,38 +218,74 @@ public class UIModelATPanel extends UIFormPanel<ModelForm>
             }
         });
         this.targetBoneInput.setText("");
+        this.targetBoneInput.placeholder(IKey.raw("e.g. head"));
+        this.targetBoneInput.h(UIConstants.CONTROL_HEIGHT);
 
-        // 6-axis toggles (mutual exclusion within each axis)
-        this.injectXPosToggle = new UIToggle(IKey.raw("X (Pitch) (+)"), false, (b) ->
-        {
-            if (b.getValue()) this.injectXNegToggle.setValue(false);
+        // 6. Color-Coded Axis Toggles
+        this.btnXPos = new UIButton(IKey.raw("+Pos"), (b) -> {
+            this.isXPos = !this.isXPos;
+            if (this.isXPos) this.isXNeg = false;
+            this.updateAxisStyles();
         });
-        this.injectXNegToggle = new UIToggle(IKey.raw("X (Pitch) (-)"), false, (b) ->
-        {
-            if (b.getValue()) this.injectXPosToggle.setValue(false);
-        });
-        this.injectYPosToggle = new UIToggle(IKey.raw("Y (Yaw) (+)"), false, (b) ->
-        {
-            if (b.getValue()) this.injectYNegToggle.setValue(false);
-        });
-        this.injectYNegToggle = new UIToggle(IKey.raw("Y (Yaw) (-)"), false, (b) ->
-        {
-            if (b.getValue()) this.injectYPosToggle.setValue(false);
-        });
-        this.injectZPosToggle = new UIToggle(IKey.raw("Z (Rotate) (+)"), false, (b) ->
-        {
-            if (b.getValue()) this.injectZNegToggle.setValue(false);
-        });
-        this.injectZNegToggle = new UIToggle(IKey.raw("Z (Rotate) (-)"), false, (b) ->
-        {
-            if (b.getValue()) this.injectZPosToggle.setValue(false);
-        });
+        this.btnXPos.tooltip(IKey.raw("X Axis (Pitch) Positive (+query.head_pitch)"));
 
-        // Math Modifier & Trackpad Multiplier
+        this.btnXNeg = new UIButton(IKey.raw("-Neg"), (b) -> {
+            this.isXNeg = !this.isXNeg;
+            if (this.isXNeg) this.isXPos = false;
+            this.updateAxisStyles();
+        });
+        this.btnXNeg.tooltip(IKey.raw("X Axis (Pitch) Negative (-query.head_pitch)"));
+
+        this.btnYPos = new UIButton(IKey.raw("+Pos"), (b) -> {
+            this.isYPos = !this.isYPos;
+            if (this.isYPos) this.isYNeg = false;
+            this.updateAxisStyles();
+        });
+        this.btnYPos.tooltip(IKey.raw("Y Axis (Yaw) Positive (+query.head_yaw)"));
+
+        this.btnYNeg = new UIButton(IKey.raw("-Neg"), (b) -> {
+            this.isYNeg = !this.isYNeg;
+            if (this.isYNeg) this.isYPos = false;
+            this.updateAxisStyles();
+        });
+        this.btnYNeg.tooltip(IKey.raw("Y Axis (Yaw) Negative (-query.head_yaw)"));
+
+        this.btnZPos = new UIButton(IKey.raw("+Pos"), (b) -> {
+            this.isZPos = !this.isZPos;
+            if (this.isZPos) this.isZNeg = false;
+            this.updateAxisStyles();
+        });
+        this.btnZPos.tooltip(IKey.raw("Z Axis (Roll) Positive (+query.head_yaw)"));
+
+        this.btnZNeg = new UIButton(IKey.raw("-Neg"), (b) -> {
+            this.isZNeg = !this.isZNeg;
+            if (this.isZNeg) this.isZPos = false;
+            this.updateAxisStyles();
+        });
+        this.btnZNeg.tooltip(IKey.raw("Z Axis (Roll) Negative (-query.head_yaw)"));
+
+        this.updateAxisStyles();
+
+        // 7. BBS 2.6 Native Multiplier Slider (UISliderTrackpad)
+        this.multiplierSlider = new UISliderTrackpad((v) -> {
+            double d = Math.round(v.doubleValue() * 100.0) / 100.0;
+            if (d == 0) this.mathModifierInput.setText("");
+            else this.mathModifierInput.setText("* " + d);
+        });
+        this.multiplierSlider.limit(0D, 2D).increment(0.05D).values(0.05D, 0.01D, 0.1D);
+        this.multiplierSlider.setValue(1.0);
+        this.multiplierSlider.tooltip(IKey.raw("Multiplier Slider (0.0 to 2.0 scale)"));
+        this.multiplierTrackpad = this.multiplierSlider;
+
+        // 8. Math Modifier & Quick Math Buttons
         this.mathModifierInput = new UITextbox(1000, (str) -> {
             String val = str.trim();
-            if (val.isEmpty()) return;
-            boolean validChars = val.matches("^[0-9a-zA-Z_\\s.+\\-*/%()]*$");
+            if (val.isEmpty())
+            {
+                this.mathModifierInput.textbox.setColor(0xffffff);
+                return;
+            }
+            boolean validChars = val.matches("^[0-9a-zA-Z_ .+*/%()-]*$");
             int balance = 0;
             for (char c : val.toCharArray())
             {
@@ -213,275 +300,375 @@ public class UIModelATPanel extends UIFormPanel<ModelForm>
             else
             {
                 this.mathModifierInput.textbox.setColor(0xffffff);
+                if (val.startsWith("* "))
+                {
+                    try
+                    {
+                        double parsed = Double.parseDouble(val.substring(2).trim());
+                        if (parsed >= 0 && parsed <= 2.0)
+                        {
+                            this.multiplierSlider.setValue(parsed);
+                        }
+                    }
+                    catch (Exception ignored) {}
+                }
             }
         });
+        this.mathModifierInput.placeholder(IKey.raw("e.g. * 0.5"));
         this.mathModifierInput.tooltip(IKey.raw("Custom Math Modifier (e.g. * 0.5)"));
+        this.mathModifierInput.h(UIConstants.CONTROL_HEIGHT);
 
-        this.multiplierTrackpad = new UITrackpad((v) -> {
-            double d = Math.round(v.doubleValue() * 100.0) / 100.0;
-            if (d == 0) this.mathModifierInput.setText("");
-            else this.mathModifierInput.setText("* " + d);
+        this.quickModHalfBtn = new UIButton(IKey.raw("½"), (b) -> {
+            this.mathModifierInput.setText("* 0.5");
+            this.multiplierSlider.setValue(0.5);
         });
-        this.multiplierTrackpad.setValue(1.0);
-        this.multiplierTrackpad.tooltip(IKey.raw("Drag to adjust multiplier (e.g. * 0.5)"));
+        this.quickModHalfBtn.tooltip(IKey.raw("Half scale (* 0.5)"));
+        this.quickModHalfBtn.color(0x282c35, 0x383e4a).h(UIConstants.CONTROL_HEIGHT);
 
-        this.quickModHalfBtn = new UIButton(IKey.raw("* 0.5"), (b) -> this.mathModifierInput.setText("* 0.5"));
-        this.quickModInvBtn = new UIButton(IKey.raw("* -1"), (b) -> this.mathModifierInput.setText("* -1.0"));
-        this.quickModSinBtn = new UIButton(IKey.raw("+ Sin"), (b) -> this.mathModifierInput.setText("* math.sin(query.anim_time * 200)"));
-
-        // Inject button
-        this.injectQueryButton = new UIButton(IKey.raw("Inject Query"), (b) ->
-        {
-            String boneText = this.targetBoneInput.getText().trim();
-            if (boneText.isEmpty()) return;
-
-            String[] targetBones = boneText.split("\\s*,\\s*");
-
-            List<String> rawAnims = this.allAnimationsToggle.getValue()
-                    ? null
-                    : this.animationsList.getCurrent();
-            if (!this.allAnimationsToggle.getValue() && (rawAnims == null || rawAnims.isEmpty())) return;
-
-            List<String> targetAnims = null;
-            if (rawAnims != null && !rawAnims.isEmpty())
-            {
-                targetAnims = new ArrayList<>();
-                for (String s : rawAnims)
-                {
-                    if (s.endsWith(" 🛠")) s = s.substring(0, s.length() - " 🛠".length());
-                    else if (s.endsWith(" [Tweaked]")) s = s.substring(0, s.length() - " [Tweaked]".length());
-                    targetAnims.add(s);
-                }
-            }
-
-            File f = this.getModelFile();
-            if (f != null && f.exists())
-            {
-                UndoManager.pushState(f);
-
-                String xQuery = null;
-                if (this.injectXPosToggle.getValue())      xQuery = "+query.head_pitch";
-                else if (this.injectXNegToggle.getValue()) xQuery = "-query.head_pitch";
-
-                String yQuery = null;
-                if (this.injectYPosToggle.getValue())      yQuery = "+query.head_yaw";
-                else if (this.injectYNegToggle.getValue()) yQuery = "-query.head_yaw";
-
-                String zQuery = null;
-                if (this.injectZPosToggle.getValue())      zQuery = "+query.head_yaw";
-                else if (this.injectZNegToggle.getValue()) zQuery = "-query.head_yaw";
-
-                String modifier = this.mathModifierInput.getText().trim();
-                if (!modifier.isEmpty())
-                {
-                    if (!modifier.matches("^[0-9a-zA-Z_\\s.+\\-*/%()]*$"))
-                    {
-                        this.getContext().notifyError(IKey.raw("Invalid character in math modifier!"));
-                        return;
-                    }
-                    int balance = 0;
-                    for (char c : modifier.toCharArray())
-                    {
-                        if (c == '(') balance++;
-                        if (c == ')') balance--;
-                        if (balance < 0) break;
-                    }
-                    if (balance != 0)
-                    {
-                        this.getContext().notifyError(IKey.raw("Unbalanced parentheses in math modifier!"));
-                        return;
-                    }
-                }
-
-                boolean anySuccess = false;
-                for (String bone : targetBones)
-                {
-                    if (!bone.isEmpty())
-                    {
-                        if (AnimTweakerEngine.injectQueries(f, bone, targetAnims, xQuery, yQuery, zQuery, modifier))
-                        {
-                            anySuccess = true;
-                        }
-                    }
-                }
-                if (anySuccess) this.triggerReload();
-            }
+        this.quickModInvBtn = new UIButton(IKey.raw("±"), (b) -> {
+            this.mathModifierInput.setText("* -1.0");
+            // -1.0 is outside the slider's 0–2 range; reset slider to neutral
+            // so it doesn't show a stale value
+            this.multiplierSlider.setValue(1.0);
         });
+        this.quickModInvBtn.tooltip(IKey.raw("Invert scale (* -1.0)"));
+        this.quickModInvBtn.color(0x282c35, 0x383e4a).h(UIConstants.CONTROL_HEIGHT);
 
-        // Remove button
-        this.removeQueriesButton = new UIButton(IKey.raw("Remove Query"), (b) ->
-        {
-            String boneText = this.targetBoneInput.getText().trim();
-            if (boneText.isEmpty()) return;
-
-            String[] targetBones = boneText.split("\\s*,\\s*");
-
-            List<String> rawAnims = this.allAnimationsToggle.getValue()
-                    ? null
-                    : this.animationsList.getCurrent();
-            if (!this.allAnimationsToggle.getValue() && (rawAnims == null || rawAnims.isEmpty())) return;
-
-            List<String> targetAnims = null;
-            if (rawAnims != null && !rawAnims.isEmpty())
-            {
-                targetAnims = new ArrayList<>();
-                for (String s : rawAnims)
-                {
-                    if (s.endsWith(" 🛠")) s = s.substring(0, s.length() - " 🛠".length());
-                    else if (s.endsWith(" [Tweaked]")) s = s.substring(0, s.length() - " [Tweaked]".length());
-                    targetAnims.add(s);
-                }
-            }
-
-            File f = this.getModelFile();
-            if (f != null && f.exists())
-            {
-                UndoManager.pushState(f);
-                boolean anySuccess = false;
-                for (String bone : targetBones)
-                {
-                    if (!bone.isEmpty())
-                    {
-                        if (AnimTweakerEngine.removeQueries(f, bone, targetAnims))
-                        {
-                            anySuccess = true;
-                        }
-                    }
-                }
-                if (anySuccess) this.triggerReload();
-            }
+        this.quickModSinBtn = new UIButton(IKey.raw("sin"), (b) -> {
+            this.mathModifierInput.setText("* math.sin(query.anim_time * 150) * 0.3");
         });
+        this.quickModSinBtn.tooltip(IKey.raw("Sine oscillation (* math.sin(...))"));
+        this.quickModSinBtn.color(0x282c35, 0x383e4a).h(UIConstants.CONTROL_HEIGHT);
 
-        // Undo button
-        this.undoButton = new UIButton(IKey.raw("Undo"), (b) ->
-        {
-            File f = this.getModelFile();
-            if (f != null)
-            {
-                if (UndoManager.undo(f))
-                {
-                    this.triggerReload();
-                }
-                else
-                {
-                    this.getContext().notifyError(IKey.raw("Nothing to Undo!"));
-                }
-            }
-        });
+        // 9. Main Action Buttons
+        this.injectQueryButton = new UIButton(IKey.raw("Inject Query"), (b) -> this.injectQueries());
+        this.injectQueryButton.tooltip(IKey.raw("Inject active Molang queries into target bone / animations"));
 
-        // Redo button
-        this.redoButton = new UIButton(IKey.raw("Redo"), (b) ->
-        {
-            File f = this.getModelFile();
-            if (f != null)
-            {
-                if (UndoManager.redo(f))
-                {
-                    this.triggerReload();
-                }
-                else
-                {
-                    this.getContext().notifyError(IKey.raw("Nothing to Redo!"));
-                }
-            }
-        });
+        this.removeQueriesButton = new UIButton(IKey.raw("Remove"), (b) -> this.removeQueries());
+        this.removeQueriesButton.tooltip(IKey.raw("Remove Molang queries from target bone / animations"));
+        this.removeQueriesButton.color(0x382626, 0x4d3232).textColor(0xff8888, true);
 
-        // Reset to Original button
-        this.resetOriginalButton = new UIButton(IKey.raw("Reset to Original"), (b) ->
-        {
-            File f = this.getModelFile();
-            if (f != null)
-            {
-                if (UndoManager.resetToOriginal(f))
-                {
-                    this.triggerReload();
-                }
-                else
-                {
-                    this.getContext().notifyError(IKey.raw("No Original Snapshot Found!"));
-                }
-            }
-        });
-        this.resetOriginalButton.color(0xff4444);
+        // Section Labels
+        UILabel labelBones = UI.label(IKey.raw("Bones"));
+        UILabel labelAnims = UI.label(IKey.raw("Animations"), 14).labelAnchor(0, 0.5F);
+        UILabel labelHistory = UI.label(IKey.raw("History"));
+        UILabel labelPresets = UI.label(IKey.raw("Presets"));
+        UILabel labelTarget = UI.label(IKey.raw("Target Bone"));
+        UILabel labelX = UI.label(IKey.raw("X (Pitch)")).color(0xff6666).labelAnchor(0, 0.5F);
+        UILabel labelY = UI.label(IKey.raw("Y (Yaw)")).color(0x55ff77).labelAnchor(0, 0.5F);
+        UILabel labelZ = UI.label(IKey.raw("Z (Roll)")).color(0x66aaff).labelAnchor(0, 0.5F);
+        UILabel labelSlider = UI.label(IKey.raw("Multiplier")).labelAnchor(0, 0.5F);
 
-        // Accept as New Original button
-        this.acceptOriginalButton = new UIButton(IKey.raw("Accept as New Original"), (b) ->
-        {
-            File f = this.getModelFile();
-            if (f != null)
-            {
-                if (UndoManager.acceptAsNewOriginal(f))
-                {
-                    this.getContext().notifySuccess(IKey.raw("Current state saved as new original!"));
-                }
-                else
-                {
-                    this.getContext().notifyError(IKey.raw("Failed to save new original!"));
-                }
-            }
-        });
-
-        // Layout in the right-side options scroll view provided by UIFormPanel
+        // Compact right-side options layout
         this.options.add(UI.column(UIConstants.MARGIN,
-            UI.label(IKey.raw("Bones")),
+            labelBones,
             this.searchBonesInput.marginTop(-2),
             this.bonesList.marginTop(-UIConstants.MARGIN),
-            UI.row(UI.label(IKey.raw("Animations"), 14).labelAnchor(0, 0.5F), this.onlyTweakedToggle, this.allAnimationsToggle).h(14).marginTop(5),
+            UI.row(labelAnims, this.onlyTweakedToggle.w(65), this.allAnimationsToggle.w(40)).h(14).marginTop(4),
             this.searchAnimationsInput.marginTop(-4),
             this.animationsList.marginTop(-UIConstants.MARGIN),
-            UI.label(IKey.raw("Presets")).marginTop(5),
-            UI.row(this.presetHeadPosBtn, this.presetHeadNegBtn),
-            UI.row(this.presetBreathingBtn, this.presetClearBtn),
-            UI.label(IKey.raw("Target Bone")).marginTop(5),
+            labelHistory.marginTop(5),
+            UI.row(this.undoButton, this.redoButton, this.resetOriginalButton, this.acceptOriginalButton).h(UIConstants.CONTROL_HEIGHT),
+            labelPresets.marginTop(5),
+            UI.row(this.presetHeadPosBtn, this.presetHeadNegBtn, this.presetBreathingBtn, this.presetClearBtn).h(UIConstants.CONTROL_HEIGHT),
+            labelTarget.marginTop(5),
             this.targetBoneInput,
-            UI.row(this.injectXPosToggle, this.injectXNegToggle),
-            UI.row(this.injectYPosToggle, this.injectYNegToggle),
-            UI.row(this.injectZPosToggle, this.injectZNegToggle),
-            UI.row(UI.label(IKey.raw("Math Modifier")).labelAnchor(0, 0.5F), this.multiplierTrackpad).h(20).marginTop(5),
-            this.mathModifierInput,
-            UI.row(this.quickModHalfBtn, this.quickModInvBtn, this.quickModSinBtn),
-            this.injectQueryButton.marginTop(5),
-            this.removeQueriesButton,
-            UI.row(this.undoButton, this.redoButton),
-            this.resetOriginalButton,
-            this.acceptOriginalButton
+            UI.row(labelX, this.btnXPos.w(38), this.btnXNeg.w(38)).h(UIConstants.CONTROL_HEIGHT).marginTop(3),
+            UI.row(labelY, this.btnYPos.w(38), this.btnYNeg.w(38)).h(UIConstants.CONTROL_HEIGHT),
+            UI.row(labelZ, this.btnZPos.w(38), this.btnZNeg.w(38)).h(UIConstants.CONTROL_HEIGHT),
+            UI.row(labelSlider, this.multiplierSlider).h(UIConstants.CONTROL_HEIGHT).marginTop(4),
+            UI.row(this.mathModifierInput, this.quickModHalfBtn.w(22), this.quickModInvBtn.w(22), this.quickModSinBtn.w(28)).h(UIConstants.CONTROL_HEIGHT),
+            UI.row(this.injectQueryButton, this.removeQueriesButton.w(60)).h(20).marginTop(5)
         ).relative(this.options).x(5).y(5).w(1F, -10).h(0));
     }
+
+    public void updateAxisStyles()
+    {
+        updateAxisButton(this.btnXPos, this.isXPos, 0xc62828);
+        updateAxisButton(this.btnXNeg, this.isXNeg, 0xb71c1c);
+        updateAxisButton(this.btnYPos, this.isYPos, 0x2e7d32);
+        updateAxisButton(this.btnYNeg, this.isYNeg, 0x1b5e20);
+        updateAxisButton(this.btnZPos, this.isZPos, 0x1565c0);
+        updateAxisButton(this.btnZNeg, this.isZNeg, 0x0d47a1);
+    }
+
+    private void updateAxisButton(UIButton btn, boolean active, int activeColor)
+    {
+        if (active)
+        {
+            btn.color(activeColor, Colors.mulRGB(activeColor, 1.15F));
+            btn.textColor(Colors.WHITE, true);
+        }
+        else
+        {
+            btn.color(0x252830, 0x323742);
+            btn.textColor(0x888888, false);
+        }
+    }
+
+    private void undo()
+    {
+        File f = this.getModelFile();
+        if (f != null)
+        {
+            if (UndoManager.undo(f))
+            {
+                this.triggerReload();
+            }
+            else
+            {
+                this.getContext().notifyError(IKey.raw("Nothing to Undo!"));
+            }
+        }
+    }
+
+    private void redo()
+    {
+        File f = this.getModelFile();
+        if (f != null)
+        {
+            if (UndoManager.redo(f))
+            {
+                this.triggerReload();
+            }
+            else
+            {
+                this.getContext().notifyError(IKey.raw("Nothing to Redo!"));
+            }
+        }
+    }
+
+    private void resetOriginal()
+    {
+        File f = this.getModelFile();
+        if (f != null)
+        {
+            if (UndoManager.resetToOriginal(f))
+            {
+                this.triggerReload();
+            }
+            else
+            {
+                this.getContext().notifyError(IKey.raw("No Original Snapshot Found!"));
+            }
+        }
+    }
+
+    private void acceptOriginal()
+    {
+        File f = this.getModelFile();
+        if (f != null)
+        {
+            if (UndoManager.acceptAsNewOriginal(f))
+            {
+                this.getContext().notifySuccess(IKey.raw("Current state saved as new original!"));
+            }
+            else
+            {
+                this.getContext().notifyError(IKey.raw("Failed to save new original!"));
+            }
+        }
+    }
+
+    private void injectQueries()
+    {
+        String boneText = this.targetBoneInput.getText().trim();
+        if (boneText.isEmpty())
+        {
+            this.getContext().notifyError(IKey.raw("Target bone is empty!"));
+            return;
+        }
+
+        String xQuery = null;
+        if (this.isXPos)      xQuery = "+query.head_pitch";
+        else if (this.isXNeg) xQuery = "-query.head_pitch";
+
+        String yQuery = null;
+        if (this.isYPos)      yQuery = "+query.head_yaw";
+        else if (this.isYNeg) yQuery = "-query.head_yaw";
+
+        String zQuery = null;
+        if (this.isZPos)      zQuery = "+query.head_yaw";
+        else if (this.isZNeg) zQuery = "-query.head_yaw";
+
+        if (xQuery == null && yQuery == null && zQuery == null)
+        {
+            this.getContext().notifyError(IKey.raw("Select at least one axis (+Pos or -Neg)!"));
+            return;
+        }
+
+        String[] targetBones = boneText.split("\\s*,\\s*");
+
+        List<String> targetAnims = this.resolveTargetAnims();
+        if (targetAnims == null && !this.allAnimationsToggle.getValue())
+        {
+            // resolveTargetAnims returns null on error (already notified)
+            return;
+        }
+
+        File f = this.getModelFile();
+        if (f != null && f.exists())
+        {
+            String modifier = this.mathModifierInput.getText().trim();
+            if (!modifier.isEmpty() && !this.isValidMathModifier(modifier))
+            {
+                return; // error already shown inside isValidMathModifier
+            }
+
+            UndoManager.pushState(f);
+
+            boolean anySuccess = false;
+            for (String bone : targetBones)
+            {
+                if (!bone.isEmpty())
+                {
+                    if (AnimTweakerEngine.injectQueries(f, bone, targetAnims, xQuery, yQuery, zQuery, modifier))
+                    {
+                        anySuccess = true;
+                    }
+                }
+            }
+            if (anySuccess)
+            {
+                this.triggerReload();
+            }
+            else
+            {
+                this.getContext().notifyError(IKey.raw("Could not inject queries into model!"));
+            }
+        }
+    }
+
+    private void removeQueries()
+    {
+        String boneText = this.targetBoneInput.getText().trim();
+        if (boneText.isEmpty())
+        {
+            this.getContext().notifyError(IKey.raw("Target bone is empty!"));
+            return;
+        }
+
+        String[] targetBones = boneText.split("\\s*,\\s*");
+
+        List<String> targetAnims = this.resolveTargetAnims();
+        if (targetAnims == null && !this.allAnimationsToggle.getValue())
+        {
+            return;
+        }
+
+        File f = this.getModelFile();
+        if (f != null && f.exists())
+        {
+            UndoManager.pushState(f);
+            boolean anySuccess = false;
+            for (String bone : targetBones)
+            {
+                if (!bone.isEmpty())
+                {
+                    if (AnimTweakerEngine.removeQueries(f, bone, targetAnims))
+                    {
+                        anySuccess = true;
+                    }
+                }
+            }
+            if (anySuccess)
+            {
+                this.triggerReload();
+            }
+            else
+            {
+                this.getContext().notifyError(IKey.raw("No queries found to remove!"));
+            }
+        }
+    }
+
+    // ---- Private helpers (DRY) ----
+
+    /**
+     * Strips the visual suffix appended to tweaked animation names in the list
+     * (e.g. " 🛠" or " [Tweaked]") to recover the real animation key.
+     */
+    private static String stripAnimSuffix(String s)
+    {
+        if (s.endsWith(" \uD83D\uDEE0")) return s.substring(0, s.length() - " \uD83D\uDEE0".length());
+        if (s.endsWith(" [Tweaked]"))  return s.substring(0, s.length() - " [Tweaked]".length());
+        return s;
+    }
+
+    /**
+     * Validates the math modifier string: only allows safe characters and balanced parentheses.
+     * Shows an error notification and returns false if invalid.
+     */
+    private boolean isValidMathModifier(String modifier)
+    {
+        if (!modifier.matches("^[0-9a-zA-Z_ .+*/%()-]*$"))
+        {
+            this.getContext().notifyError(IKey.raw("Invalid character in math modifier!"));
+            return false;
+        }
+        int balance = 0;
+        for (char c : modifier.toCharArray())
+        {
+            if (c == '(') balance++;
+            if (c == ')') balance--;
+            if (balance < 0) break;
+        }
+        if (balance != 0)
+        {
+            this.getContext().notifyError(IKey.raw("Unbalanced parentheses in math modifier!"));
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * Resolves the list of target animation names from the UI state.
+     * Returns null when "All Animations" is active (means apply to all).
+     * Returns an empty-check-failed null (after notifying the user) when
+     * "All" is off but nothing is selected.
+     */
+    private List<String> resolveTargetAnims()
+    {
+        if (this.allAnimationsToggle.getValue()) return null; // null = all animations
+
+        List<String> rawAnims = this.animationsList.getCurrent();
+        if (rawAnims == null || rawAnims.isEmpty())
+        {
+            this.getContext().notifyError(IKey.raw("No animations selected! Check 'All' or select animations."));
+            return null;
+        }
+
+        List<String> targetAnims = new ArrayList<>();
+        for (String s : rawAnims)
+        {
+            targetAnims.add(stripAnimSuffix(s));
+        }
+        return targetAnims;
+    }
+
     @Override
     public void setVisible(boolean visible)
     {
         super.setVisible(visible);
-        // Only sync when the user explicitly switches to this tab,
-        // and only after the form (model) is already loaded.
         if (visible && this.form != null)
         {
             this.syncBoneFromPoseTab();
         }
     }
 
-    /**
-     * Called by UIModelForm whenever a new ModelForm is opened for editing.
-     * Refreshes the animations list from the newly loaded model file.
-     */
     @Override
     public void startEdit(ModelForm form)
     {
         super.startEdit(form);
-        // NOTE: Do NOT call syncBoneFromPoseTab() here.
-        // startEdit is called on ALL panels simultaneously during editor init,
-        // before the model or poseEditor bones are ready. Calling into
-        // poseEditor at that stage causes a layout deadlock freeze.
         this.updateAnimationsList(this.searchAnimationsInput.getText());
         this.updateBonesList(this.searchBonesInput.getText());
 
-        // Capture original file state for undo/redo on first open
         File modelFile = this.getModelFile();
         if (modelFile != null && modelFile.exists())
         {
             UndoManager.captureOriginal(modelFile);
         }
 
-        // Load model-specific target bone from memory map
         if (form.model.get() != null)
         {
             String modelId = form.model.get();
@@ -491,7 +678,20 @@ public class UIModelATPanel extends UIFormPanel<ModelForm>
         }
     }
 
-    private void setTargetBone(String bone)
+    public String getTargetBone()
+    {
+        String text = this.targetBoneInput != null ? this.targetBoneInput.getText() : null;
+        if (text == null || text.trim().isEmpty())
+        {
+            if (this.form != null && this.form.model.get() != null)
+            {
+                text = lastSelectedBones.get(this.form.model.get());
+            }
+        }
+        return text;
+    }
+
+    public void setTargetBone(String bone)
     {
         this.targetBoneInput.setText(bone);
         if (this.form != null)
@@ -502,13 +702,22 @@ public class UIModelATPanel extends UIFormPanel<ModelForm>
                 lastSelectedBones.put(modelId, bone);
             }
         }
+
+        try
+        {
+            String first = (bone != null && !bone.isEmpty()) ? bone.split(",")[0].trim() : "";
+            if (!first.isEmpty())
+            {
+                this.boneSelection().set(first);
+                if (this.editor instanceof UIModelForm modelForm && modelForm.modelPanel != null && modelForm.modelPanel.poseEditor != null)
+                {
+                    modelForm.modelPanel.poseEditor.selectBone(first);
+                }
+            }
+        }
+        catch (Exception ignored) {}
     }
 
-    /**
-     * Called by UIForm.pickBoneFromViewport() when the user clicks a bone while
-     * this panel is the active panel. We update targetBoneInput here and return
-     * false so that the framework still switches to the Pose tab (no freeze risk).
-     */
     @Override
     public boolean pickBoneInList(String bone)
     {
@@ -516,14 +725,11 @@ public class UIModelATPanel extends UIFormPanel<ModelForm>
         {
             this.setTargetBone(bone);
             this.selectBoneInList(bone);
+            return true;
         }
         return false;
     }
 
-    /**
-     * Called when this panel IS the active view and a bone is picked.
-     * (pickBoneInList handles the more common viewport-click case.)
-     */
     @Override
     public void pickBone(String bone)
     {
@@ -534,7 +740,7 @@ public class UIModelATPanel extends UIFormPanel<ModelForm>
         }
     }
 
-    private void syncBoneFromPoseTab()
+    public void syncBoneFromPoseTab()
     {
         try
         {
@@ -551,7 +757,6 @@ public class UIModelATPanel extends UIFormPanel<ModelForm>
         catch (Exception ignored) {}
     }
 
-    /** Scrolls the bonesList to the given bone and highlights it without triggering callbacks. */
     private void selectBoneInList(String bone)
     {
         try
@@ -590,7 +795,6 @@ public class UIModelATPanel extends UIFormPanel<ModelForm>
         catch (Exception ignored) {}
     }
 
-
     // ---- Private helpers ----
 
     private File getModelFile()
@@ -600,37 +804,30 @@ public class UIModelATPanel extends UIFormPanel<ModelForm>
         String modelId = this.form.model.get();
         if (modelId == null || modelId.isEmpty()) return null;
 
-        // 1. model.bbs.json
         Link bbsLink = Link.assets("models/" + modelId + "/model.bbs.json");
         File bbsFile = BBSMod.getProvider().getFile(bbsLink);
         if (bbsFile != null && bbsFile.exists()) return bbsFile;
 
-        // 2. {modelId}.bbs.json (e.g. hugeplayer.bbs.json, nvl1.bbs.json)
         Link modelIdBbsLink = Link.assets("models/" + modelId + "/" + modelId + ".bbs.json");
         File modelIdBbsFile = BBSMod.getProvider().getFile(modelIdBbsLink);
         if (modelIdBbsFile != null && modelIdBbsFile.exists()) return modelIdBbsFile;
 
-        // 3. model.json
         Link jsonLink = Link.assets("models/" + modelId + "/model.json");
         File jsonFile = BBSMod.getProvider().getFile(jsonLink);
         if (jsonFile != null && jsonFile.exists()) return jsonFile;
 
-        // 4. {modelId}.json
         Link modelIdJsonLink = Link.assets("models/" + modelId + "/" + modelId + ".json");
         File modelIdJsonFile = BBSMod.getProvider().getFile(modelIdJsonLink);
         if (modelIdJsonFile != null && modelIdJsonFile.exists()) return modelIdJsonFile;
 
-        // 5. model.geo.json
         Link geoLink = Link.assets("models/" + modelId + "/model.geo.json");
         File geoFile = BBSMod.getProvider().getFile(geoLink);
         if (geoFile != null && geoFile.exists()) return geoFile;
 
-        // 6. {modelId}.geo.json
         Link modelIdGeoLink = Link.assets("models/" + modelId + "/" + modelId + ".geo.json");
         File modelIdGeoFile = BBSMod.getProvider().getFile(modelIdGeoLink);
         if (modelIdGeoFile != null && modelIdGeoFile.exists()) return modelIdGeoFile;
 
-        // 7. Search folder for any .json or .bbs.json file
         Link modelFolderLink = Link.assets("models/" + modelId);
         File modelFolder = BBSMod.getProvider().getFile(modelFolderLink);
         if (modelFolder != null && modelFolder.isDirectory())
@@ -646,7 +843,6 @@ public class UIModelATPanel extends UIFormPanel<ModelForm>
             }
         }
 
-        // 8. Search animations folder
         Link animFolderLink = Link.assets("models/" + modelId + "/animations");
         File animFolder = BBSMod.getProvider().getFile(animFolderLink);
         if (animFolder != null && animFolder.isDirectory())
@@ -662,12 +858,11 @@ public class UIModelATPanel extends UIFormPanel<ModelForm>
     {
         this.animationsList.clear();
         Set<String> animSet = new LinkedHashSet<>();
-        Map<String, Boolean> animStatusMap = new java.util.HashMap<>();
+        Map<String, Boolean> animStatusMap = new HashMap<>();
 
         File modelFile = this.getModelFile();
         if (modelFile != null && modelFile.exists())
         {
-            // Single file read: get both names and tweaked status at once
             animStatusMap = AnimTweakerEngine.getAnimationsWithStatus(modelFile);
             animSet.addAll(animStatusMap.keySet());
         }
@@ -695,7 +890,7 @@ public class UIModelATPanel extends UIFormPanel<ModelForm>
 
             if (filter.isEmpty() || anim.toLowerCase().contains(filter.toLowerCase()))
             {
-                String label = isTweaked ? anim + " 🛠" : anim;
+                String label = isTweaked ? anim + " \uD83D\uDEE0" : anim;
                 this.animationsList.add(label);
             }
         }

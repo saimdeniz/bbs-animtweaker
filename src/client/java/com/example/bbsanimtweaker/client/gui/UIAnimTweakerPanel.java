@@ -126,7 +126,6 @@ public class UIAnimTweakerPanel extends UIDashboardPanel
         this.liveTransform.translate.set(pt != null ? pt.translate : new org.joml.Vector3f());
         this.liveTransform.scale.set(pt != null ? pt.scale : new org.joml.Vector3f(1, 1, 1));
         this.liveTransform.rotate.set(pt != null ? pt.rotate : new org.joml.Vector3f());
-        this.liveTransform.rotate2.set(pt != null ? pt.rotate2 : new org.joml.Vector3f());
 
         this.transformPanel.setTransform(this.liveTransform);
     }
@@ -155,7 +154,7 @@ public class UIAnimTweakerPanel extends UIDashboardPanel
             }
         }
         
-        return bbsFile;
+        return null;
     }
 
     private void triggerReload()
@@ -499,10 +498,10 @@ public class UIAnimTweakerPanel extends UIDashboardPanel
         this.injectYNegToggle = new UIToggle(IKey.raw("Y (Yaw) (-)"), false, (b) -> {
             if(b.getValue()) this.injectYPosToggle.setValue(false);
         });
-        this.injectZPosToggle = new UIToggle(IKey.raw("Z (Yaw) (+)"), false, (b) -> {
+        this.injectZPosToggle = new UIToggle(IKey.raw("Z (Roll) (+)"), false, (b) -> {
             if(b.getValue()) this.injectZNegToggle.setValue(false);
         });
-        this.injectZNegToggle = new UIToggle(IKey.raw("Z (Yaw) (-)"), false, (b) -> {
+        this.injectZNegToggle = new UIToggle(IKey.raw("Z (Roll) (-)"), false, (b) -> {
             if(b.getValue()) this.injectZPosToggle.setValue(false);
         });
 
@@ -625,7 +624,6 @@ public class UIAnimTweakerPanel extends UIDashboardPanel
             pt.translate.set(this.liveTransform.translate);
             pt.scale.set(this.liveTransform.scale);
             pt.rotate.set(this.liveTransform.rotate);
-            pt.rotate2.set(this.liveTransform.rotate2);
         });
 
         this.rightContent = UI.column(5,

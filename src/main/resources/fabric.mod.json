@@ -14,8 +14,11 @@
   "license": "MIT",
   "environment": "*",
   "entrypoints": {
-    "client": [
-      "com.example.bbsanimtweaker.client.BBSAnimTweakerClientInit"
+    "bbs-addon": [
+      "com.example.bbsanimtweaker.BBSAnimTweakerAddon"
+    ],
+    "bbs-client-addon": [
+      "com.example.bbsanimtweaker.client.BBSAnimTweakerClientAddon"
     ]
   },
   "mixins": [

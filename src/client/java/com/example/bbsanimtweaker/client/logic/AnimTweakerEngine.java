@@ -30,6 +30,14 @@ public class AnimTweakerEngine
     private static final Logger LOGGER = LoggerFactory.getLogger("BBS-AT");
     private static final Gson GSON = new GsonBuilder().serializeNulls().setPrettyPrinting().create();
 
+    /** Pre-compiled regex for locating the "animations" block in a JSON file. */
+    private static final java.util.regex.Pattern ANIM_BLOCK_PATTERN =
+        java.util.regex.Pattern.compile("\"animations\"\\s*:\\s*\\{");
+
+    /** Pre-compiled regex for collapsing pretty-printed JSON arrays onto single lines. */
+    private static final java.util.regex.Pattern ARRAY_FORMAT_PATTERN =
+        java.util.regex.Pattern.compile("\\[\\s*([^\\[\\]\\{\\}]+?)\\s*\\]");
+
 
     /**
      * Holds the result of extracting the animations block from a JSON string.
@@ -535,7 +543,7 @@ public class AnimTweakerEngine
      */
     private static AnimationsBlockResult extractAnimationsBlock(String content)
     {
-        Matcher matcher = Pattern.compile("\"animations\"\\s*:\\s*\\{").matcher(content);
+        Matcher matcher = ANIM_BLOCK_PATTERN.matcher(content);
         if (!matcher.find()) return null;
 
         int matcherStart = matcher.start();
@@ -589,7 +597,7 @@ public class AnimTweakerEngine
         String animDump = GSON.toJson(newAnimations);
         
         // Format array values into single lines just like original model formats
-        Matcher arrMatcher = Pattern.compile("\\[\\s*([^\\[\\]\\{\\}]+?)\\s*\\]").matcher(animDump);
+        Matcher arrMatcher = ARRAY_FORMAT_PATTERN.matcher(animDump);
         StringBuffer sb = new StringBuffer();
         while (arrMatcher.find()) {
             String inner = arrMatcher.group(1).replaceAll("\\s*\\n\\s*", " ").trim();
@@ -626,8 +634,17 @@ public class AnimTweakerEngine
             + originalContent.substring(blockResult.blockEnd);
 
         File tempFile = new File(targetFile.getParentFile(), targetFile.getName() + ".tmp");
-        Files.write(tempFile.toPath(), finalContent.getBytes(StandardCharsets.UTF_8));
-        atomicMoveWithFallback(tempFile, targetFile);
+        try
+        {
+            Files.write(tempFile.toPath(), finalContent.getBytes(StandardCharsets.UTF_8));
+            atomicMoveWithFallback(tempFile, targetFile);
+        }
+        catch (IOException e)
+        {
+            // Ensure the temp file does not linger on disk if the move fails
+            if (tempFile.exists()) { tempFile.delete(); }
+            throw e;
+        }
     }
 
     /**

@@ -24,6 +24,7 @@ public class UndoManager
 {
     private static final Logger LOGGER = LoggerFactory.getLogger("BBS-AT");
     private static final int MAX_UNDO_DEPTH = 15;
+    private static final int MAX_REDO_DEPTH = 15;
     private static final String ORIGINAL_SUFFIX = ".original";
 
     private static final Map<String, FileHistory> historyMap = new HashMap<>();
@@ -139,6 +140,12 @@ public class UndoManager
             String currentContent = new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8);
             history.redoStack.push(currentContent);
 
+            // Trim oldest redo entries if exceeding max depth
+            while (history.redoStack.size() > MAX_REDO_DEPTH)
+            {
+                history.redoStack.removeLast();
+            }
+
             // Restore from undo stack
             String previousContent = history.undoStack.pop();
             writeFileAtomically(file, previousContent);
@@ -168,6 +175,12 @@ public class UndoManager
             // Save current state to undo stack
             String currentContent = new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8);
             history.undoStack.push(currentContent);
+
+            // Trim oldest undo entries if exceeding max depth
+            while (history.undoStack.size() > MAX_UNDO_DEPTH)
+            {
+                history.undoStack.removeLast();
+            }
 
             // Restore from redo stack
             String redoContent = history.redoStack.pop();
@@ -296,14 +309,23 @@ public class UndoManager
     private static void writeFileAtomically(File targetFile, String content) throws IOException
     {
         File tempFile = new File(targetFile.getParentFile(), targetFile.getName() + ".tmp");
-        Files.write(tempFile.toPath(), content.getBytes(StandardCharsets.UTF_8));
         try
         {
-            Files.move(tempFile.toPath(), targetFile.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            Files.write(tempFile.toPath(), content.getBytes(StandardCharsets.UTF_8));
+            try
+            {
+                Files.move(tempFile.toPath(), targetFile.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            }
+            catch (java.nio.file.AtomicMoveNotSupportedException | java.nio.file.AccessDeniedException e)
+            {
+                Files.move(tempFile.toPath(), targetFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            }
         }
-        catch (java.nio.file.AtomicMoveNotSupportedException | java.nio.file.AccessDeniedException e)
+        catch (IOException e)
         {
-            Files.move(tempFile.toPath(), targetFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            // Ensure the temp file does not linger on disk if write or move fails
+            if (tempFile.exists()) { tempFile.delete(); }
+            throw e;
         }
     }
 }

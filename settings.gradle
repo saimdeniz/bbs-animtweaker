@@ -10,16 +10,3 @@ pluginManagement {
 }
 
 rootProject.name = 'bbs-at'
-
-includeBuild('../bbs-fs-1.20.1') {
-	dependencySubstitution {
-		substitute module('mchorse:bbs:2.3.1-1.20.1') using project(':')
-	}
-}
-
-includeBuild('../BBS-ADDON-ENGINE-main') {
-	dependencySubstitution {
-		substitute module('ElGatoPro300:bbs-addon-engine:1.1.0') using project(':')
-	}
-}
-

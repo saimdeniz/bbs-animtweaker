@@ -6,7 +6,12 @@ plugins {
 version = project.mod_version
 group = project.maven_group
 
+base {
+	archivesName = project.archives_base_name
+}
+
 repositories {
+	mavenLocal()
 	maven { url = "https://api.modrinth.com/maven" }
 }
 
@@ -23,21 +28,21 @@ loom {
 
 dependencies {
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
-	mappings "net.fabricmc:yarn:1.20.1+build.10:v2"
+	mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
 	modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
 	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
 
-	// BBS FS Local Project Dependency
-	modCompileOnly "mchorse:bbs:2.3.1-1.20.1"
-	modClientCompileOnly "mchorse:bbs:2.3.1-1.20.1"
+	// BBS FS 2.6 Local Dependency
+	modImplementation("mchorse:bbs:${project.bbs_version}") { transitive = false }
+}
 
-	// BBS Addon Engine Local Project Dependency
-	modCompileOnly "ElGatoPro300:bbs-addon-engine:1.1.0"
-	modClientCompileOnly "ElGatoPro300:bbs-addon-engine:1.1.0"
+// Loom cache refresh helper from BBS 2.6 addon-template
+def bbsJar = new File(new File(System.getProperty("user.home")), ".m2/repository/mchorse/bbs/${project.bbs_version}/bbs-${project.bbs_version}.jar")
+def remapCache = file(".gradle/loom-cache/remapped_mods/remapped/mchorse")
 
-	// AAA Particles (users must have this installed at runtime)
-	modCompileOnly "maven.modrinth:aaa-particles:${project.aaa_version}"
-	modClientCompileOnly "maven.modrinth:aaa-particles:${project.aaa_version}"
+if (bbsJar.exists() && remapCache.exists() && bbsJar.lastModified() > remapCache.lastModified()) {
+	logger.lifecycle("BBS was rebuilt since it was last remapped — clearing ${remapCache}")
+	delete(remapCache)
 }
 
 processResources {
@@ -56,12 +61,4 @@ java {
 	withSourcesJar()
 	sourceCompatibility = JavaVersion.VERSION_17
 	targetCompatibility = JavaVersion.VERSION_17
-}
-
-jar {
-	def projectName = project.name
-	inputs.property "projectName", projectName
-	from("LICENSE") {
-		rename { "${it}_$projectName" }
-	}
 }

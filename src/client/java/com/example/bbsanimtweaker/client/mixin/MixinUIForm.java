@@ -25,7 +25,7 @@ public class MixinUIForm
             {
                 if (panel instanceof UIModelATPanel atPanel)
                 {
-                    atPanel.targetBoneInput.setText(bone);
+                    atPanel.setTargetBone(bone);
                     break;
                 }
             }
